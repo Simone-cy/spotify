@@ -16,7 +16,8 @@
         "foregroundImage": "./assets/images/icon.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "com.example.spotifyapp"
+      "package": "com.example.spotifyapp",
+      "googleServicesFile": "./google-services.json"
     },
     "web": {
       "bundler": "metro",
