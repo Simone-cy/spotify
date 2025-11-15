@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import { Audio } from 'expo-av';
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
@@ -44,6 +44,110 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
   const [playlist, setPlaylistState] = useState<Song[]>([]);
   const [currentIndex, setCurrentIndex] = useState(-1);
 
+  const soundRef = useRef<Audio.Sound | null>(null);
+  const isPlayingRef = useRef(false);
+  const playlistRef = useRef<Song[]>([]);
+  const currentIndexRef = useRef(-1);
+  const playSongRef = useRef<((song: Song, songList?: Song[], index?: number) => Promise<void>) | undefined>(undefined);
+
+  useEffect(() => {
+    soundRef.current = sound;
+  }, [sound]);
+
+  useEffect(() => {
+    isPlayingRef.current = isPlaying;
+  }, [isPlaying]);
+
+  useEffect(() => {
+    playlistRef.current = playlist;
+  }, [playlist]);
+
+  useEffect(() => {
+    currentIndexRef.current = currentIndex;
+  }, [currentIndex]);
+
+  const playSong = useCallback(async (song: Song, songList?: Song[], index?: number) => {
+    try {
+      const currentSound = soundRef.current;
+      if (currentSound) {
+        await currentSound.unloadAsync();
+      }
+
+      const { sound: newSound } = await Audio.Sound.createAsync(
+        { uri: song.uri },
+        { shouldPlay: true }
+      );
+
+      soundRef.current = newSound;
+      setSound(newSound);
+      setCurrentSong(song);
+      setIsPlaying(true);
+
+      if (songList) {
+        setPlaylistState(songList);
+        setCurrentIndex(index ?? 0);
+      }
+    } catch (error) {
+      console.error('Error playing song:', error);
+    }
+  }, []);
+
+  useEffect(() => {
+    playSongRef.current = playSong;
+  }, [playSong]);
+
+  const pauseSong = useCallback(async () => {
+    const currentSound = soundRef.current;
+    if (currentSound) {
+      await currentSound.pauseAsync();
+      setIsPlaying(false);
+    }
+  }, []);
+
+  const resumeSong = useCallback(async () => {
+    const currentSound = soundRef.current;
+    if (currentSound) {
+      await currentSound.playAsync();
+      setIsPlaying(true);
+    }
+  }, []);
+
+  const nextSong = useCallback(async () => {
+    const currentPlaylist = playlistRef.current;
+    const currentIdx = currentIndexRef.current;
+    if (currentPlaylist.length > 0 && currentIdx < currentPlaylist.length - 1) {
+      const nextIndex = currentIdx + 1;
+      if (playSongRef.current) {
+        await playSongRef.current(currentPlaylist[nextIndex], currentPlaylist, nextIndex);
+      }
+    }
+  }, []);
+
+  const previousSong = useCallback(async () => {
+    const currentPlaylist = playlistRef.current;
+    const currentIdx = currentIndexRef.current;
+    if (currentPlaylist.length > 0 && currentIdx > 0) {
+      const prevIndex = currentIdx - 1;
+      if (playSongRef.current) {
+        await playSongRef.current(currentPlaylist[prevIndex], currentPlaylist, prevIndex);
+      }
+    }
+  }, []);
+
+  const seekTo = async (newPosition: number) => {
+    if (sound) {
+      await sound.setPositionAsync(newPosition);
+      setPosition(newPosition);
+    }
+  };
+
+  const setPlaylist = (songs: Song[], startIndex: number = 0) => {
+    setPlaylistState(songs);
+    if (songs.length > 0 && startIndex < songs.length) {
+      playSong(songs[startIndex], songs, startIndex);
+    }
+  };
+
   useEffect(() => {
     const initAudio = async () => {
       await Audio.setAudioModeAsync({
@@ -61,6 +165,8 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
             shouldShowAlert: true,
             shouldPlaySound: false,
             shouldSetBadge: false,
+            shouldShowBanner: true,
+            shouldShowList: true,
           }),
         });
       }
@@ -68,15 +174,15 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
 
     initAudio();
 
-    let notificationListener: any;
+    let notificationSubscription: Notifications.Subscription | undefined;
 
     if (Platform.OS !== 'web') {
-      notificationListener = Notifications.addNotificationResponseReceivedListener(
+      notificationSubscription = Notifications.addNotificationResponseReceivedListener(
         (response) => {
           const action = response.actionIdentifier;
 
           if (action === 'play-pause') {
-            if (isPlaying) {
+            if (isPlayingRef.current) {
               pauseSong();
             } else {
               resumeSong();
@@ -94,12 +200,12 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
       if (sound) {
         sound.unloadAsync();
       }
-      if (notificationListener) {
-        Notifications.removeNotificationSubscription(notificationListener);
+      if (notificationSubscription) {
+        notificationSubscription.remove();
       }
       dismissMediaNotification();
     };
-  }, []);
+  }, [pauseSong, resumeSong, nextSong, previousSong, sound]);
 
   useEffect(() => {
     if (sound) {
@@ -111,80 +217,14 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
           setIsPlaying(status.isPlaying);
 
           if (status.didJustFinish) {
-            await nextSong();
+            nextSong();
           }
         }
       }, 1000);
 
       return () => clearInterval(interval);
     }
-  }, [sound, currentIndex, playlist]);
-
-  const playSong = async (song: Song, songList?: Song[], index?: number) => {
-    try {
-      if (sound) {
-        await sound.unloadAsync();
-      }
-
-      const { sound: newSound } = await Audio.Sound.createAsync(
-        { uri: song.uri },
-        { shouldPlay: true }
-      );
-
-      setSound(newSound);
-      setCurrentSong(song);
-      setIsPlaying(true);
-
-      if (songList) {
-        setPlaylistState(songList);
-        setCurrentIndex(index ?? 0);
-      }
-    } catch (error) {
-      console.error('Error playing song:', error);
-    }
-  };
-
-  const pauseSong = async () => {
-    if (sound) {
-      await sound.pauseAsync();
-      setIsPlaying(false);
-    }
-  };
-
-  const resumeSong = async () => {
-    if (sound) {
-      await sound.playAsync();
-      setIsPlaying(true);
-    }
-  };
-
-  const nextSong = async () => {
-    if (playlist.length > 0 && currentIndex < playlist.length - 1) {
-      const nextIndex = currentIndex + 1;
-      await playSong(playlist[nextIndex], playlist, nextIndex);
-    }
-  };
-
-  const previousSong = async () => {
-    if (playlist.length > 0 && currentIndex > 0) {
-      const prevIndex = currentIndex - 1;
-      await playSong(playlist[prevIndex], playlist, prevIndex);
-    }
-  };
-
-  const seekTo = async (newPosition: number) => {
-    if (sound) {
-      await sound.setPositionAsync(newPosition);
-      setPosition(newPosition);
-    }
-  };
-
-  const setPlaylist = (songs: Song[], startIndex: number = 0) => {
-    setPlaylistState(songs);
-    if (songs.length > 0 && startIndex < songs.length) {
-      playSong(songs[startIndex], songs, startIndex);
-    }
-  };
+  }, [sound, nextSong]);
 
   useEffect(() => {
     if (currentSong && Platform.OS !== 'web') {
