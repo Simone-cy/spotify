@@ -1,5 +1,13 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { Audio } from 'expo-av';
+import * as Notifications from 'expo-notifications';
+import { Platform } from 'react-native';
+import {
+  setupNotificationCategories,
+  requestNotificationPermissions,
+  showMediaNotification,
+  dismissMediaNotification,
+} from '@/lib/notificationService';
 
 export interface Song {
   uri: string;
@@ -37,16 +45,59 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
   const [currentIndex, setCurrentIndex] = useState(-1);
 
   useEffect(() => {
-    Audio.setAudioModeAsync({
-      playsInSilentModeIOS: true,
-      staysActiveInBackground: true,
-      shouldDuckAndroid: true,
-    });
+    const initAudio = async () => {
+      await Audio.setAudioModeAsync({
+        playsInSilentModeIOS: true,
+        staysActiveInBackground: true,
+        shouldDuckAndroid: true,
+      });
+
+      if (Platform.OS !== 'web') {
+        await requestNotificationPermissions();
+        await setupNotificationCategories();
+
+        Notifications.setNotificationHandler({
+          handleNotification: async () => ({
+            shouldShowAlert: true,
+            shouldPlaySound: false,
+            shouldSetBadge: false,
+          }),
+        });
+      }
+    };
+
+    initAudio();
+
+    let notificationListener: any;
+
+    if (Platform.OS !== 'web') {
+      notificationListener = Notifications.addNotificationResponseReceivedListener(
+        (response) => {
+          const action = response.actionIdentifier;
+
+          if (action === 'play-pause') {
+            if (isPlaying) {
+              pauseSong();
+            } else {
+              resumeSong();
+            }
+          } else if (action === 'next') {
+            nextSong();
+          } else if (action === 'previous') {
+            previousSong();
+          }
+        }
+      );
+    }
 
     return () => {
       if (sound) {
         sound.unloadAsync();
       }
+      if (notificationListener) {
+        Notifications.removeNotificationSubscription(notificationListener);
+      }
+      dismissMediaNotification();
     };
   }, []);
 
@@ -134,6 +185,12 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
       playSong(songs[startIndex], songs, startIndex);
     }
   };
+
+  useEffect(() => {
+    if (currentSong && Platform.OS !== 'web') {
+      showMediaNotification(currentSong.title, currentSong.artist, isPlaying);
+    }
+  }, [currentSong, isPlaying]);
 
   return (
     <AudioContext.Provider

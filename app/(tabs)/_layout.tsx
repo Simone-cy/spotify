@@ -1,5 +1,6 @@
 import { Tabs } from 'expo-router';
 import { Music, Library, ListMusic } from 'lucide-react-native';
+import { Platform } from 'react-native';
 
 export default function TabLayout() {
   return (
@@ -11,6 +12,8 @@ export default function TabLayout() {
         tabBarStyle: {
           backgroundColor: '#000',
           borderTopColor: '#282828',
+          height: Platform.OS === 'web' ? 60 : 80,
+          paddingBottom: Platform.OS === 'web' ? 10 : 25,
         },
       }}
     >
