@@ -11,7 +11,7 @@ import Animated, {
   useAnimatedStyle,
   withSpring,
 } from 'react-native-reanimated';
-import { Play, Pause, SkipForward, SkipBack } from 'lucide-react-native';
+import { Play, Pause, SkipForward, SkipBack, Repeat, Repeat1 } from 'lucide-react-native';
 import { useAudio } from '@/contexts/AudioContext';
 import Slider from '@react-native-community/slider';
 
@@ -21,11 +21,13 @@ export default function MiniPlayer() {
     isPlaying,
     position,
     duration,
+    isLooping,
     pauseSong,
     resumeSong,
     nextSong,
     previousSong,
     seekTo,
+    toggleLoop,
   } = useAudio();
 
   const translateY = useSharedValue(0);
@@ -85,6 +87,14 @@ export default function MiniPlayer() {
         </View>
 
         <View style={styles.controls}>
+          <TouchableOpacity onPress={toggleLoop} style={styles.controlButton}>
+            {isLooping ? (
+              <Repeat1 size={20} color="#1DB954" />
+            ) : (
+              <Repeat size={20} color="#666" />
+            )}
+          </TouchableOpacity>
+
           <TouchableOpacity onPress={previousSong} style={styles.controlButton}>
             <SkipBack size={24} color="#fff" />
           </TouchableOpacity>

@@ -55,22 +55,42 @@ export const requestNotificationPermissions = async () => {
 export const showMediaNotification = async (
   title: string,
   artist: string,
-  isPlaying: boolean
+  isPlaying: boolean,
+  position?: number,
+  duration?: number
 ) => {
   if (Platform.OS === 'web') return;
 
   try {
     await Notifications.dismissAllNotificationsAsync();
 
+    const formatTime = (millis: number) => {
+      const totalSeconds = Math.floor(millis / 1000);
+      const minutes = Math.floor(totalSeconds / 60);
+      const seconds = totalSeconds % 60;
+      return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+    };
+
+    let bodyText = artist;
+    if (position !== undefined && duration !== undefined && duration > 0) {
+      bodyText = `${artist} • ${formatTime(position)} / ${formatTime(duration)}`;
+    }
+
     await Notifications.scheduleNotificationAsync({
       content: {
         title: isPlaying ? `▶️ ${title}` : `⏸ ${title}`,
-        body: artist,
+        body: bodyText,
         sticky: true,
         priority: Notifications.AndroidNotificationPriority.MAX,
-        data: { type: 'media-control', isPlaying },
+        data: {
+          type: 'media-control',
+          isPlaying,
+          position,
+          duration,
+        },
         categoryIdentifier: 'media-controls',
         sound: false,
+        autoDismiss: false,
       },
       trigger: null,
     });

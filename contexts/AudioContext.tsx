@@ -24,6 +24,7 @@ interface AudioContextType {
   duration: number;
   playlist: Song[];
   currentIndex: number;
+  isLooping: boolean;
   playSong: (song: Song, songList?: Song[], index?: number) => Promise<void>;
   pauseSong: () => Promise<void>;
   resumeSong: () => Promise<void>;
@@ -31,6 +32,7 @@ interface AudioContextType {
   previousSong: () => Promise<void>;
   seekTo: (position: number) => Promise<void>;
   setPlaylist: (songs: Song[], startIndex?: number) => void;
+  toggleLoop: () => void;
 }
 
 const AudioContext = createContext<AudioContextType | undefined>(undefined);
@@ -43,11 +45,13 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
   const [duration, setDuration] = useState(0);
   const [playlist, setPlaylistState] = useState<Song[]>([]);
   const [currentIndex, setCurrentIndex] = useState(-1);
+  const [isLooping, setIsLooping] = useState(false);
 
   const soundRef = useRef<Audio.Sound | null>(null);
   const isPlayingRef = useRef(false);
   const playlistRef = useRef<Song[]>([]);
   const currentIndexRef = useRef(-1);
+  const isLoopingRef = useRef(false);
   const playSongRef = useRef<((song: Song, songList?: Song[], index?: number) => Promise<void>) | undefined>(undefined);
 
   useEffect(() => {
@@ -66,6 +70,10 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     currentIndexRef.current = currentIndex;
   }, [currentIndex]);
 
+  useEffect(() => {
+    isLoopingRef.current = isLooping;
+  }, [isLooping]);
+
   const playSong = useCallback(async (song: Song, songList?: Song[], index?: number) => {
     try {
       const currentSound = soundRef.current;
@@ -75,7 +83,7 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
 
       const { sound: newSound } = await Audio.Sound.createAsync(
         { uri: song.uri },
-        { shouldPlay: true }
+        { shouldPlay: true, isLooping: isLoopingRef.current }
       );
 
       soundRef.current = newSound;
@@ -148,6 +156,16 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const toggleLoop = useCallback(() => {
+    setIsLooping((prev) => {
+      const newLoopState = !prev;
+      if (soundRef.current) {
+        soundRef.current.setIsLoopingAsync(newLoopState);
+      }
+      return newLoopState;
+    });
+  }, []);
+
   useEffect(() => {
     const initAudio = async () => {
       await Audio.setAudioModeAsync({
@@ -216,7 +234,7 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
           setDuration(status.durationMillis || 0);
           setIsPlaying(status.isPlaying);
 
-          if (status.didJustFinish) {
+          if (status.didJustFinish && !isLoopingRef.current) {
             nextSong();
           }
         }
@@ -228,9 +246,15 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (currentSong && Platform.OS !== 'web') {
-      showMediaNotification(currentSong.title, currentSong.artist, isPlaying);
+      showMediaNotification(
+        currentSong.title,
+        currentSong.artist,
+        isPlaying,
+        position,
+        duration
+      );
     }
-  }, [currentSong, isPlaying]);
+  }, [currentSong, isPlaying, position, duration]);
 
   return (
     <AudioContext.Provider
@@ -242,6 +266,7 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
         duration,
         playlist,
         currentIndex,
+        isLooping,
         playSong,
         pauseSong,
         resumeSong,
@@ -249,6 +274,7 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
         previousSong,
         seekTo,
         setPlaylist,
+        toggleLoop,
       }}
     >
       {children}

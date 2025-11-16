@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import * as MediaLibrary from 'expo-media-library';
+import * as FileSystem from 'expo-file-system';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Search, Upload, Play, Trash2 } from 'lucide-react-native';
 import { useAudio, Song } from '@/contexts/AudioContext';
@@ -71,16 +72,41 @@ export default function LibraryScreen() {
       const result = await DocumentPicker.getDocumentAsync({
         type: 'audio/*',
         multiple: true,
-        copyToCacheDirectory: false,
+        copyToCacheDirectory: true,
       });
 
       if (!result.canceled && result.assets) {
-        const newSongs: Song[] = result.assets.map((asset) => ({
-          uri: asset.uri,
-          title: asset.name.replace(/\.[^/.]+$/, ''),
-          artist: 'Unknown Artist',
-          duration: 0,
-        }));
+        const newSongs: Song[] = [];
+
+        for (const asset of result.assets) {
+          let persistentUri = asset.uri;
+
+          if (Platform.OS !== 'web') {
+            try {
+              const fileName = asset.name || `audio_${Date.now()}.mp3`;
+              const docDir = FileSystem.Paths.document;
+              const newPath = `${docDir.uri}${fileName}`;
+
+              const fileInfo = await FileSystem.getInfoAsync(newPath);
+              if (!fileInfo.exists) {
+                await FileSystem.copyAsync({
+                  from: asset.uri,
+                  to: newPath,
+                });
+              }
+              persistentUri = newPath;
+            } catch (copyError) {
+              console.error('Error copying file:', copyError);
+            }
+          }
+
+          newSongs.push({
+            uri: persistentUri,
+            title: asset.name.replace(/\.[^/.]+$/, ''),
+            artist: 'Unknown Artist',
+            duration: 0,
+          });
+        }
 
         const updatedSongs = [...songs, ...newSongs];
         setSongs(updatedSongs);
